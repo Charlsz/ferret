@@ -1,72 +1,80 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearch } from './hooks/useSearch';
-import { AIExplainer } from './AIExplainer';
+import { getAllFilesMetadata } from '@/lib/db/index';
 
 /**
  * components/SearchUI.tsx
  *
  * Local Fast-Search component running completely in Web Workers with IDB.
  */
-export function SearchUI() {
+export function SearchUI({ onSelectFile, selectedFile }: { onSelectFile: (file: { id: string, name: string } | null) => void, selectedFile: { id: string, name: string } | null }) {
   const { isSearchReady, query, results, error, search } = useSearch();
-  const [selectedFile, setSelectedFile] = useState<{ id: string, name: string } | null>(null);
+  const [allFiles, setAllFiles] = useState<{ id: string, name: string, relativePath: string, extension: string }[]>([]);
+
+  // Automatically refresh the available files list when no search is active
+  useEffect(() => {
+    if (!query && !selectedFile) {
+      getAllFilesMetadata().then((files) => setAllFiles(files)).catch(console.error);
+    }
+  }, [query, selectedFile, isSearchReady]);
+
+  if (selectedFile) return null; // SearchUI hides itself when a file is selected in to new layout
 
   return (
-    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mt-8">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800">Local Unified Search</h2>
-          <p className="text-sm text-gray-500 mt-1">Fuzzy search directly against the local indices using MiniSearch in Web Workers.</p>
-        </div>
-      </div>
-
+    <div className="w-full bg-white rounded-xl shadow-sm border border-zinc-200">
+      
       {!isSearchReady && (
-        <div className="p-3 mb-4 text-sm text-yellow-800 bg-yellow-50 rounded-md">
-          Starting indexer engine across folders...
+        <div className="p-3 m-4 text-xs font-medium text-amber-700 bg-amber-50 rounded-md border border-amber-100 flex items-center gap-2">
+          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          Warming up indexer across folders...
         </div>
       )}
 
       {error && (
-        <div className="p-3 mb-4 text-sm text-red-800 bg-red-50 rounded-md">
+        <div className="p-3 m-4 text-xs font-medium text-red-700 bg-red-50 rounded-md border border-red-100">
           {error}
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative p-4 border-b border-zinc-100 bg-zinc-50/50 rounded-t-xl">
+        <svg className="w-4 h-4 absolute left-7 top-7 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         <input
           type="text"
           value={query}
           onChange={(e) => {
             search(e.target.value);
-            setSelectedFile(null); // Reset selection when searching anew
+            onSelectFile(null); // Reset selection when searching anew
           }}
           disabled={!isSearchReady}
           placeholder="Search by file name or content..."
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition disabled:bg-gray-100 disabled:cursor-not-allowed"
+          className="w-full pl-9 pr-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-800 transition disabled:bg-zinc-50 disabled:cursor-not-allowed placeholder:text-zinc-400 font-medium shadow-sm"
         />
       </div>
 
       {query && results.length === 0 && (
-        <p className="text-center text-sm text-gray-500 mt-6 pb-2">No files matched.</p>
+        <p className="text-center text-sm text-zinc-500 py-8 italic bg-zinc-50/30">No files matched.</p>
       )}
 
-      {results.length > 0 && !selectedFile && (
-        <div className="mt-6 border-t border-gray-100 pt-4">
-          <ul className="space-y-3">
-            {results.map((res) => (
-              <li 
-                key={res.id} 
-                onClick={() => setSelectedFile({ id: res.id, name: res.name })}
-                className="p-3 flex justify-between items-start bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition cursor-pointer"
+      {/* Show all available files when there's no query */}
+      {!query && allFiles.length > 0 && (
+        <div className="p-2">
+          <ul className="space-y-1 max-h-[50vh] overflow-y-auto px-2 custom-scrollbar">
+            {allFiles.map((file) => (
+              <li
+                key={file.id}
+                onClick={() => onSelectFile({ id: file.id, name: file.name })}
+                className="p-3 flex justify-between items-center rounded-lg hover:bg-zinc-100 transition cursor-pointer group"
               >
-                <div>
-                  <h3 className="font-semibold text-blue-700 hover:underline">{res.name}</h3>
-                  <p className="text-xs font-mono text-gray-500 mt-1">{res.relativePath}</p>
-                </div>
-                <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded shadow-sm">
-                  Score: {res.score.toFixed(1)}
+                <div className="flex items-center gap-3 w-full min-w-0 pr-4">
+                  <div className="flex-shrink-0 w-7 h-7 bg-zinc-100 border border-zinc-200 text-zinc-500 rounded flex items-center justify-center font-bold text-[10px] uppercase group-hover:bg-white transition" title={file.extension}>
+                    {file.extension.replace('.', '').slice(0, 3) || 'TXT'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-zinc-700 text-sm group-hover:text-zinc-900 truncate font-mono">{file.name}</h3>
+                    <p className="text-[10px] text-zinc-400 mt-0.5 truncate tracking-wide">{file.relativePath}</p>
+                  </div>
                 </div>
               </li>
             ))}
@@ -74,21 +82,25 @@ export function SearchUI() {
         </div>
       )}
 
-      {selectedFile && (
-        <div className="mt-6 border-t border-gray-100 pt-4">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-medium text-gray-800 bg-gray-100 px-3 py-1 rounded inline-block">
-              Selected: {selectedFile.name}
-            </h3>
-            <button 
-              onClick={() => setSelectedFile(null)}
-              className="text-xs text-gray-500 hover:text-gray-800 transition underline underline-offset-4"
-            >
-              Back to results
-            </button>
-          </div>
-          
-          <AIExplainer fileId={selectedFile.id} fileName={selectedFile.name} />
+      {results.length > 0 && (
+        <div className="p-2">
+          <ul className="space-y-1 max-h-[50vh] overflow-y-auto px-2 custom-scrollbar">
+            {results.map((res) => (
+              <li
+                key={res.id}
+                onClick={() => onSelectFile({ id: res.id, name: res.name })}
+                className="p-3 flex justify-between items-center rounded-lg hover:bg-zinc-100 transition cursor-pointer group"
+              >
+                <div className="flex flex-col min-w-0 pr-4 flex-1">
+                  <h3 className="font-medium text-zinc-800 text-sm truncate font-mono">{res.name}</h3>
+                  <p className="text-[10px] text-zinc-400 mt-0.5 truncate tracking-wide">{res.relativePath}</p>
+                </div>
+                <div className="bg-zinc-100 border border-zinc-200 text-zinc-500 text-[10px] font-mono px-1.5 py-0.5 rounded shadow-sm opacity-0 group-hover:opacity-100 transition">
+                  {Math.round(res.score)}
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@
  * Lazy-loads the model only when an explanation is required, keeping memory footprint low.
  */
 
-import { CreateMLCEngine, InitProgressReport } from '@mlc-ai/web-llm';
+import { CreateMLCEngine, InitProgressReport, hasModelInCache } from '@mlc-ai/web-llm';
 import { getFile } from '../lib/db/index';
 import { APP_CONFIG } from '../config/settings';
 import type { 
@@ -64,9 +64,21 @@ async function initEngine() {
   }
 }
 
-ctx.onmessage = async (event: MessageEvent<WorkerMessage<AIExplainRequestPayload>>) => {
-  if (event.data.type === 'AI_EXPLAIN_REQUEST') {
-    const { fileId, userPrompt } = event.data.payload as AIExplainRequestPayload;
+ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
+  const { type, payload } = event.data;
+
+  if (type === 'AI_CHECK_CACHE') {
+    try {
+      const isCached = await hasModelInCache(APP_CONFIG.ai.defaultModelId);
+      ctx.postMessage({ type: 'AI_CHECK_CACHE_RESPONSE', payload: isCached } as WorkerMessage<boolean>);
+    } catch (e) {
+      ctx.postMessage({ type: 'AI_CHECK_CACHE_RESPONSE', payload: false } as WorkerMessage<boolean>);
+    }
+    return;
+  }
+
+  if (type === 'AI_EXPLAIN_REQUEST') {
+    const { fileId, userPrompt } = payload as AIExplainRequestPayload;
 
     try {
       // 1. Fetch file directly from local DB

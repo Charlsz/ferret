@@ -64,9 +64,14 @@ ctx.onmessage = async (event: MessageEvent<{ handle: FileSystemDirectoryHandle, 
     } as WorkerMessage<IndexerProgressPayload>);
 
   } catch (error: any) {
+    let errMsg = error.message || 'An unknown error occurred during indexing.';
+    if (error.name === 'QuotaExceededError' || errMsg.toLowerCase().includes('quota')) {
+      errMsg = 'Storage Quota Exceeded: Your browser lacks space to index more files. Use System Controls to wipe data and try a smaller folder.';
+    }
+
     ctx.postMessage({
       type: 'INDEX_ERROR',
-      payload: error.message || 'An unknown error occurred during indexing.',
+      payload: errMsg,
     } as WorkerMessage<string>);
   }
 };

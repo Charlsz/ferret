@@ -81,17 +81,40 @@ export async function getFile(id: string): Promise<FileRecord | undefined> {
   return db.get('files', id);
 }
 
+export async function getAllFilesMetadata(): Promise<Omit<FileRecord, 'content'>[]> {
+  const db = await getDB();
+  const files = await db.getAll('files');
+  // Strip out the potentially massive content string so the UI doesn't crash
+  return files.map(({ content, ...rest }) => rest);
+}
+
 // --- Danger Zone: Full Cleanup ---
 
 /**
  * Irreversibly purges all local application data, clearing IndexedDB.
  * Essential for the "Panic Button / Zero Data Retention" requirement.
  */
-export async function purgeAllData(): Promise<void> {
+export async function purgeAllData(includeModelCaches = true): Promise<void> {
+  // 1. Wipe IndexedDB 
   if (dbPromise) {
     const db = await getDB();
     db.close();
     dbPromise = null;
   }
   await deleteDB(APP_CONFIG.db.name);
+
+  // 2. Clear WebLLM Cache API entries if requested
+  if (includeModelCaches && 'caches' in window) {
+    try {
+      const cacheNames = await caches.keys();
+      for (const name of cacheNames) {
+        // WebLLM cache typically uses prefixes like "webllm" or model specific names.
+        // For a full nuke, we can target webllm or tvm caches, but since this is 
+        // a dedicated tool, wiping all origin caches is the safest zero-retention guarantee.
+        await caches.delete(name);
+      }
+    } catch (err) {
+      console.error('Failed to clear Cache API:', err);
+    }
+  }
 }

@@ -20,7 +20,9 @@ export type WorkerMessageType =
   | 'AI_STATE_CHANGE'
   | 'AI_EXPLAIN_REQUEST'
   | 'AI_EXPLAIN_RESPONSE'
-  | 'AI_EXPLAIN_ERROR';
+  | 'AI_EXPLAIN_ERROR'
+  | 'AI_CHECK_CACHE'
+  | 'AI_CHECK_CACHE_RESPONSE';
 
 export type AIModelState = 'NOT_LOADED' | 'DOWNLOADING' | 'READY' | 'GENERATING' | 'ERROR';
 

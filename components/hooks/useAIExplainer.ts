@@ -18,6 +18,7 @@ import type {
  */
 export function useAIExplainer() {
   const [modelState, setModelState] = useState<AIModelState>('NOT_LOADED');
+  const [isModelCached, setIsModelCached] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [progress, setProgress] = useState<AIInitProgressPayload | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
@@ -37,6 +38,9 @@ export function useAIExplainer() {
         const { type, payload } = event.data;
 
         switch (type) {
+          case 'AI_CHECK_CACHE_RESPONSE':
+            setIsModelCached(payload as boolean);
+            break;
           case 'AI_STATE_CHANGE':
             setModelState(payload as AIModelState);
             break;
@@ -47,6 +51,7 @@ export function useAIExplainer() {
           case 'AI_INIT_COMPLETE':
             setIsInitializing(false);
             setProgress(null);
+            setIsModelCached(true); // If it initialized completely, it's definitely cached now
             break;
           case 'AI_EXPLAIN_RESPONSE':
             setIsExplaining(false);
@@ -59,6 +64,9 @@ export function useAIExplainer() {
             break;
         }
       };
+
+      // Check if the model is already in cache on hook mount
+      workerRef.current.postMessage({ type: 'AI_CHECK_CACHE' } as WorkerMessage<void>);
     }
 
     return () => {
@@ -79,5 +87,5 @@ export function useAIExplainer() {
     } as WorkerMessage<AIExplainRequestPayload>);
   }, []);
 
-  return { modelState, isInitializing, progress, isExplaining, explanation, error, explainFile };
+  return { modelState, isModelCached, isInitializing, progress, isExplaining, explanation, error, explainFile };
 }

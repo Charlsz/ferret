@@ -12,7 +12,7 @@ import { useIndexer } from '@/components/hooks/useIndexer';
  * Client element handling user permissions to folders.
  * Displays connection state and triggers background indexing gracefully.
  */
-export function WorkspaceManager() {
+export function WorkspaceManager({ compact }: { compact?: boolean }) {
   const [directories, setDirectories] = useState<ConnectedDirectory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,44 +76,56 @@ export function WorkspaceManager() {
       if (hasPermission) {
         startIndexing(dir);
       } else {
-        setError(`Permission denied to read folder: ${dir.name}`);
+        setError(`Access Expired: Browsers require re-approval after restarting. Please click 'Sync Index' and grant permission, or Re-add the folder.`);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to verify permissions.');
+      console.error('Failed to verify permissions:', err);
+      setError(`Storage Error or Expired Handle: ${err.message}. If this persists, remove the workspace and re-add it.`);
     }
   };
 
-  return (
-    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-5">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800">Connected Workspaces</h2>
-          <p className="text-sm text-gray-500 mt-1">Read-only connection strictly to the folders you approve.</p>
-        </div>
-        <button 
+  if (compact) {
+    return (
+      <div className="flex items-center gap-3">
+        {(error || indexError) && <span className="text-xs text-red-600">{error || indexError}</span>}
+        <button
           onClick={handleConnect}
           disabled={isIndexing}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition shadow-sm disabled:bg-blue-300"
+          className="px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded hover:bg-zinc-800 transition disabled:bg-zinc-300"
         >
-          {isIndexing ? 'Indexing...' : 'Add Folder'}
+          {isIndexing ? 'Indexing...' : 'Connect folder'}
         </button>
       </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      {!directories.length && (
+        <div className="text-center py-6">
+          <button
+            onClick={handleConnect}
+            disabled={isIndexing}
+            className="px-6 py-3 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 transition shadow-sm disabled:bg-zinc-300 w-full"
+          >
+            {isIndexing ? 'Indexing Workspace...' : 'Choose folder'}
+          </button>
+        </div>
+      )}
 
       {(error || indexError) && (
-        <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md mb-4 flex items-center">
+        <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md mb-4 text-left border border-red-100">
           <span className="font-semibold mr-2">Error:</span> {error || indexError}
         </p>
       )}
 
-      {loading ? (
-        <div className="text-center py-6">
-          <p className="text-sm text-gray-500">Loading workspaces...</p>
+      {loading && (
+        <div className="text-center py-4">
+          <p className="text-xs text-zinc-500 animate-pulse">Loading workspaces...</p>
         </div>
-      ) : directories.length === 0 ? (
-        <div className="text-center py-6 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-sm text-gray-500 italic">No workspaces connected.</p>
-        </div>
-      ) : (
+      )}
+
+      {directories.length > 0 && (
         <ul className="space-y-3">
           {directories.map((dir) => (
             <li key={dir.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
