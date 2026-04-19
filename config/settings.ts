@@ -32,12 +32,12 @@ export const APP_CONFIG = {
 
   // Inference Configuration (WebLLM)
   ai: {
-    // Default model ID for WebLLM. 
-    // We use a lightweight and optimized one for the browser (WebGPU).
-    defaultModelId: 'Llama-3-8B-Instruct-q4f32_1-MLC',
+    // We switched to a much faster, coder-specific model (1.5B parameters).
+    // It consumes less VRAM, downloads faster by caching via Cache API, 
+    // and is fine-tuned for code explanation rather than general chat.
+    defaultModelId: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
     
-    // Safe character limit to send in a single prompt (chunking).
-    // Assuming ~4 characters per token, 12000 chars are ~3000 tokens.
+    // Safe character limit. 
     maxChunkSizeChars: 12000,
   }
 } as const;

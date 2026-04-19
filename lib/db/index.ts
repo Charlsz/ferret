@@ -1,4 +1,4 @@
-import { openDB, IDBPDatabase } from 'idb';
+import { openDB, IDBPDatabase, deleteDB } from 'idb';
 import { APP_CONFIG } from '../../config/settings';
 import type { FerretDBSchema } from './types';
 import type { ConnectedDirectory, FileMetadata } from '../fs/types';
@@ -79,4 +79,19 @@ export async function saveFile(file: FileRecord): Promise<void> {
 export async function getFile(id: string): Promise<FileRecord | undefined> {
   const db = await getDB();
   return db.get('files', id);
+}
+
+// --- Danger Zone: Full Cleanup ---
+
+/**
+ * Irreversibly purges all local application data, clearing IndexedDB.
+ * Essential for the "Panic Button / Zero Data Retention" requirement.
+ */
+export async function purgeAllData(): Promise<void> {
+  if (dbPromise) {
+    const db = await getDB();
+    db.close();
+    dbPromise = null;
+  }
+  await deleteDB(APP_CONFIG.db.name);
 }

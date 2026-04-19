@@ -1,5 +1,7 @@
 import { DashboardLayout } from '@/components/ui/Layout';
 import { WorkspaceManager } from '@/components/WorkspaceManager';
+import { SearchUI } from '@/components/SearchUI';
+import { SystemControls } from '@/components/SystemControls';
 
 export default function Home() {
   return (
@@ -12,13 +14,14 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Phase 2 Component: File System Manager */}
+        {/* Phase 2/3 Component: File System & IndexedDB */}
         <WorkspaceManager />
         
-        {/* Placeholder for Phase 3/4 components */}
-        <div className="bg-gray-100 border border-gray-200 rounded-xl p-8 text-center text-gray-500 border-dashed">
-          <p>Search & AI Integration coming next...</p>
-        </div>
+        {/* Phase 4/5 Component: High-Speed Web Worker Search + Explain Button */}
+        <SearchUI />
+
+        {/* Phase 6 Component: Zero Data Retention Control */}
+        <SystemControls />
       </div>
     </DashboardLayout>
   );
