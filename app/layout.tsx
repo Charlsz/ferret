@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: "/ferret.png",
+    icon: "public/ferret.png",
   },
 };
 
