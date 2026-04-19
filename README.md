@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ferret
+
+![ferret.png](ferret.png)
+
+Ferret is a private workspace explorer with built-in AI. Ferret help developers and researchers search and understand large folders of files without uploading their data anywhere. 
+
+Reading through an unfamiliar codebase or scattered documents takes hours. You want to ask AI to explain it, but you cannot upload sensitive company code or private research to cloud tools like ChatGPT. 
+
+**Example usage**: A developer downloads a massive, undocumented software project. They open Ferret in their browser, point it to the project folder, and instantly search for "authentication." They open the login file and ask the built-in AI, "How does the login flow work here?" to get an instant, private answer.
+
+## Features
+
+- **Instant Local Search**: Find keywords across thousands of files instantly in your browser.
+- **Private AI Explanations**: Ask questions about your code. The AI model runs completely on your own device—zero data leaves your computer.
+- **Secure File Access**: Reads your local folders directly using modern web APIs. No backend needed.
 
 ## Getting Started
 
-First, run the development server:
+First, install dependencies and start the local development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Select a Folder**: When the app opens, click the prompt to select a local folder on your computer. Your browser will ask for permission to read the files.
+2. **Search**: Type in the search bar to find files containing your keywords.
+3. **Explore & Explain**: Click on any file to view its contents. Ask the built-in AI questions about the file to get plain-English explanations.
 
-## Learn More
+## Contributing
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+We welcome contributions! 
+- If you find a bug or have a feature request, please open a GitHub issue.
+- If you want to contribute code, fork the repository, make your changes, and submit a pull request.
