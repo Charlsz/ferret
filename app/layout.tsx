@@ -44,9 +44,6 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  icons: {
-    icon: "public/ferret.png",
-  },
 };
 
 export const viewport: Viewport = {
