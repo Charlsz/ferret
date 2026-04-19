@@ -96,12 +96,28 @@ export async function getAllFilesMetadata(): Promise<Omit<FileRecord, 'content'>
  */
 export async function purgeAllData(includeModelCaches = true): Promise<void> {
   // 1. Wipe IndexedDB 
-  if (dbPromise) {
-    const db = await getDB();
-    db.close();
-    dbPromise = null;
+  try {
+    if (dbPromise) {
+      const db = await getDB();
+      db.close();
+      dbPromise = null;
+    }
+    
+    // deleteDB will block if other tabs have the DB open, so we don't strictly await it if it hangs
+    const deletePromise = deleteDB(APP_CONFIG.db.name, {
+      blocked() {
+        console.warn('deleteDB is blocked by another tab or process! Make sure to close other tabs.');
+      }
+    });
+
+    // Wait at most 3 seconds for deleteDB to complete
+    await Promise.race([
+      deletePromise,
+      new Promise((resolve) => setTimeout(resolve, 3000))
+    ]);
+  } catch (err) {
+    console.error('Failed to delete IDB:', err);
   }
-  await deleteDB(APP_CONFIG.db.name);
 
   // 2. Clear WebLLM Cache API entries if requested
   if (includeModelCaches && 'caches' in window) {
@@ -109,8 +125,6 @@ export async function purgeAllData(includeModelCaches = true): Promise<void> {
       const cacheNames = await caches.keys();
       for (const name of cacheNames) {
         // WebLLM cache typically uses prefixes like "webllm" or model specific names.
-        // For a full nuke, we can target webllm or tvm caches, but since this is 
-        // a dedicated tool, wiping all origin caches is the safest zero-retention guarantee.
         await caches.delete(name);
       }
     } catch (err) {

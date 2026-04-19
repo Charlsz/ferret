@@ -15,14 +15,22 @@ export function SystemControls() {
 
   const handleNukeData = async () => {
     setIsPurging(true);
+    
+    // Safety fallback: if wiping takes longer than 5 seconds, force reload anyway.
+    const fallbackTimer = setTimeout(() => {
+      window.location.reload();
+    }, 5000);
+
     try {
       await purgeAllData(true);
+      clearTimeout(fallbackTimer);
       window.location.reload();
     } catch (err) {
       console.error('Failed to purge data:', err);
       alert('Failed to completely erase local data. Please refresh and try again.');
       setIsPurging(false);
       setShowModal(false);
+      clearTimeout(fallbackTimer);
     }
   };
 
