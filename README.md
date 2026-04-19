@@ -16,11 +16,11 @@ Reading through an unfamiliar codebase or scattered documents takes hours. You w
 
 ## Getting Started
 
-First, install dependencies and start the local development server:
+First, ensure you have [Bun](https://bun.sh/) installed, install dependencies and start the local development server:
 
 ```bash
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the app.
