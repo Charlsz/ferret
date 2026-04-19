@@ -1,6 +1,6 @@
 # Ferret
 
-![ferret.png](ferret.png)
+![ferret](public/ferret.png)
 
 Ferret is a private workspace explorer with built-in AI. Ferret help developers and researchers search and understand large folders of files without uploading their data anywhere. 
 
