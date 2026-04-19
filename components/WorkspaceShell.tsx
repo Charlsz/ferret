@@ -30,14 +30,6 @@ export function WorkspaceShell() {
           <h1 className="text-sm font-semibold text-zinc-800">
             Ferret Chat
           </h1>
-          <div className="relative group">
-            <button className="text-zinc-400 hover:text-zinc-600 p-1 rounded-md hover:bg-zinc-100 transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
-            </button>
-            <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-48 bg-white border border-zinc-200 rounded-md shadow-lg p-2 z-50">
-              <SystemControls />
-            </div>
-          </div>
         </div>
         <div className="flex-1 overflow-hidden p-4">
           <AIExplainer selectedFile={selectedFile} />
@@ -78,16 +70,22 @@ export function WorkspaceShell() {
         ) : (
           /* Missing selected file state - list files */
           <div className="flex-1 overflow-y-auto p-8 w-full max-w-4xl mx-auto custom-scrollbar bg-white">
-            <div className="flex justify-between items-end mb-6 pb-4 border-b border-zinc-100">
-              <div>
-                <h2 className="text-xl font-semibold text-zinc-800">Workspace</h2>
-                <p className="text-sm text-zinc-500 mt-1 mb-2">Select a file to start chatting.</p>
-              </div>
-              <WorkspaceManager compact />
+            <div className="mb-6 pb-4 border-b border-zinc-100">
+              <h2 className="text-xl font-semibold text-zinc-800">Workspace</h2>
+              <p className="text-sm text-zinc-500 mt-1">Search or select a file to chat with it.</p>
             </div>
 
-            <div className="bg-zinc-50 rounded-xl border border-zinc-200 overflow-hidden shadow-sm">
+            <div className="bg-zinc-50 rounded-xl border border-zinc-200 overflow-hidden shadow-sm mb-12">
               <SearchUI onSelectFile={setSelectedFile} selectedFile={selectedFile} />
+            </div>
+
+            <div className="flex justify-between items-end mb-4 border-b border-zinc-100 pb-2">
+              <h3 className="text-sm font-semibold text-zinc-800">Connected Folders</h3>
+            </div>
+            <WorkspaceManager />
+            
+            <div className="mt-12 pt-6 border-t border-zinc-100 flex justify-end">
+              <SystemControls />
             </div>
           </div>
         )}

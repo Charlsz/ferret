@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { requestDirectoryAccess, verifyPermission } from '@/lib/fs/directory';
@@ -16,17 +16,13 @@ export function WorkspaceManager({ compact }: { compact?: boolean }) {
   const [directories, setDirectories] = useState<ConnectedDirectory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   const { isIndexing, progress, error: indexError, startIndexing } = useIndexer();
 
-  // On mount, load directories previously granted access and saved in IndexedDB
   useEffect(() => {
     const loadSavedWorkspaces = async () => {
       try {
         const savedDirs = await getDirectories();
-        // Check if Chrome/Edge still grant us re-access (browsers usually drop handles 
-        // after user closes the tab, requiring prompt). Instead of asking on mount, 
-        // we'll just display them, and ask right before doing any indexing.
         setDirectories(savedDirs);
       } catch (err: any) {
         console.error('Failed restoring workspaces:', err);
@@ -34,7 +30,6 @@ export function WorkspaceManager({ compact }: { compact?: boolean }) {
         setLoading(false);
       }
     };
-
     loadSavedWorkspaces();
   }, []);
 
@@ -43,22 +38,13 @@ export function WorkspaceManager({ compact }: { compact?: boolean }) {
       setError(null);
       const dir = await requestDirectoryAccess();
       if (dir) {
-        // Prevent duplicate folders
-        if (directories.some((d) => d.handle.name === dir.handle.name)) {
-          return;
-        }
-        
-        // 1. Commit to IndexedDB
+        if (directories.some((d) => d.handle.name === dir.handle.name)) return;
         await saveDirectory(dir);
-        
-        // 2. Update UI
         setDirectories((prev) => [...prev, dir]);
-
-        // 3. Spawns Web Worker to index contents in the background
         startIndexing(dir);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to connect directory. Make sure you are using a compatible browser.');
+      setError(err.message || 'Failed to connect directory.');
     }
   };
 
@@ -71,16 +57,15 @@ export function WorkspaceManager({ compact }: { compact?: boolean }) {
 
   const handleSyncDirectory = async (dir: ConnectedDirectory) => {
     try {
-      // Browsers often require manual interaction to re-grant permissions after refresh
       const hasPermission = await verifyPermission(dir.handle, true);
       if (hasPermission) {
         startIndexing(dir);
       } else {
-        setError(`Access Expired: Browsers require re-approval after restarting. Please click 'Sync Index' and grant permission, or Re-add the folder.`);
+        setError(`Access Expired. Re-add the folder.`);
       }
     } catch (err: any) {
       console.error('Failed to verify permissions:', err);
-      setError(`Storage Error or Expired Handle: ${err.message}. If this persists, remove the workspace and re-add it.`);
+      setError(`Storage Error or Expired Handle. Re-add the folder.`);
     }
   };
 
@@ -126,46 +111,56 @@ export function WorkspaceManager({ compact }: { compact?: boolean }) {
       )}
 
       {directories.length > 0 && (
-        <ul className="space-y-3">
-          {directories.map((dir) => (
-            <li key={dir.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
-              <div className="flex flex-col w-1/2">
-                <span className="font-medium text-gray-800 font-mono text-sm break-all">{dir.name}/</span>
-                <span className="text-xs text-gray-500 mt-1">
-                  Added on: {new Date(dir.connectedAt).toLocaleString()}
-                </span>
-                
-                {isIndexing && progress && (
-                  <div className="mt-2 flex flex-col gap-1 w-full max-w-sm">
-                    <span className="text-xs text-blue-600 animate-pulse">
-                      Indexing files... {progress.processed} processed {/* (total missing due to async geneartor) / {progress.total} */}
-                    </span>
-                    <span className="text-[10px] text-gray-400 truncate">
-                      Reading {progress.currentFile || '...'}
-                    </span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleSyncDirectory(dir)}
-                  disabled={isIndexing}
-                  className="text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-md transition disabled:text-gray-400 disabled:hover:bg-transparent"
-                >
-                  Sync Index
-                </button>
-                <button 
-                  onClick={() => handleDisconnect(dir.id, dir.name)}
-                  disabled={isIndexing}
-                  className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-md transition disabled:text-red-300 disabled:hover:bg-transparent"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-3 pt-2">
+          <ul className="space-y-3 pb-2 border-b border-zinc-100">
+            {directories.map((dir) => (
+              <li key={dir.id} className="flex justify-between items-center px-4 py-3 bg-white rounded-xl border border-zinc-200 transition">
+                <div className="flex flex-col w-1/2">
+                  <span className="font-medium text-zinc-800 font-mono text-sm break-all">{dir.name}/</span>
+                  <span className="text-[10px] text-zinc-500 mt-1">
+                    Added {new Date(dir.connectedAt).toLocaleDateString()}
+                  </span>
+
+                  {isIndexing && progress && (
+                    <div className="mt-2 flex flex-col gap-1 w-full max-w-sm">
+                      <span className="text-xs text-blue-600 animate-pulse">
+                        Indexing... {progress.processed}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSyncDirectory(dir)}
+                    disabled={isIndexing}
+                    className="text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-200 hover:bg-zinc-50 px-3 py-1.5 rounded transition disabled:opacity-50"
+                  >
+                    Sync
+                  </button>
+                  <button
+                    onClick={() => handleDisconnect(dir.id, dir.name)}
+                    disabled={isIndexing}
+                    className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-100 px-3 py-1.5 rounded transition disabled:opacity-50"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={handleConnect}
+              disabled={isIndexing}
+              className="text-xs text-zinc-600 hover:text-zinc-900 font-medium flex items-center bg-white px-3 py-1.5 rounded border border-zinc-200 hover:bg-zinc-50 transition shadow-sm disabled:opacity-50"
+            >
+              <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+              Add folder
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
