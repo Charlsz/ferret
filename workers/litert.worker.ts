@@ -10,7 +10,8 @@
  * The worker is lazy-initialised on first request to keep startup cost near zero.
  */
 
-import { loadLiteRt, loadAndCompile, Tensor } from '@litertjs/core';
+import { loadLiteRt, loadAndCompile, isWebGPUSupported, setWebGpuDevice, Tensor } from '@litertjs/core';
+import { getCachedModelBlobUrl } from '../lib/litert/modelLoader';
 import { APP_CONFIG } from '../config/settings';
 import type {
   WorkerMessage,
@@ -28,6 +29,9 @@ const ctx: Worker = self as any;
 let embedModel: any = null;
 let classifyModel: any = null;
 let isInitializing = false;
+// Bug 1 fix: track whether loadLiteRt() has already been called.
+// The real API throws if called a second time, so we must guard at module level.
+let liteRtLoaded = false;
 let currentAccelerator: LiteRTAccelerator = 'wasm';
 
 function postState(state: LiteRTState) {
@@ -45,20 +49,53 @@ async function initLiteRT(): Promise<void> {
   postState('LOADING');
 
   try {
-    // Initialise the WASM runtime (served from /wasm/ via Next.js static assets)
-    await loadLiteRt(APP_CONFIG.litert.wasmPath);
+    // Bug 1 fix: only call loadLiteRt once per worker lifetime.
+    if (!liteRtLoaded) {
+      await loadLiteRt(APP_CONFIG.litert.wasmPath);
+      liteRtLoaded = true;
+    }
 
-    // Detect WebGPU availability
-    // @ts-ignore — navigator.gpu is standard but may need updated TS DOM lib
-    const hasWebGPU = !!navigator.gpu;
-    const accelerator = hasWebGPU ? 'webgpu' : 'wasm';
-    currentAccelerator = accelerator;
+    // Bug 2 fix: use the official isWebGPUSupported() helper, then explicitly
+    // request a GPUDevice and register it via setWebGpuDevice() before
+    // calling loadAndCompile(). Without this the real implementation throws:
+    // "WebGPU was requested but no WebGPU device is set in the environment."
+    const hasWebGPU = isWebGPUSupported();
+    if (hasWebGPU) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) {
+          const device = await adapter.requestDevice();
+          setWebGpuDevice(device);
+          currentAccelerator = 'webgpu';
+        } else {
+          // Adapter unavailable at runtime — fall back gracefully
+          currentAccelerator = 'wasm';
+        }
+      } catch {
+        // requestAdapter/requestDevice can throw in some environments
+        currentAccelerator = 'wasm';
+      }
+    } else {
+      currentAccelerator = 'wasm';
+    }
 
-    // Load the embedding model (.tflite) — Universal Sentence Encoder Lite
-    embedModel = await loadAndCompile(APP_CONFIG.litert.embedModelUrl, { accelerator });
+    const accelerator = currentAccelerator;
 
-    // Load the classification model (.tflite) — MobileBERT-based text classifier
-    classifyModel = await loadAndCompile(APP_CONFIG.litert.classifyModelUrl, { accelerator });
+    // Bug 3 fix: resolve cached blob URLs via the Cache API before loading.
+    // modelLoader.ts was defined but never wired in — models re-downloaded
+    // on every session without this. Now they are fetched once and served
+    // from the browser cache on subsequent runs.
+    const embedUrl = await getCachedModelBlobUrl(
+      APP_CONFIG.litert.embedModelUrl,
+      APP_CONFIG.litert.embedModelCacheKey,
+    );
+    const classifyUrl = await getCachedModelBlobUrl(
+      APP_CONFIG.litert.classifyModelUrl,
+      APP_CONFIG.litert.classifyModelCacheKey,
+    );
+
+    embedModel = await loadAndCompile(embedUrl, { accelerator });
+    classifyModel = await loadAndCompile(classifyUrl, { accelerator });
 
     isInitializing = false;
     postState('READY');
@@ -72,7 +109,7 @@ async function initLiteRT(): Promise<void> {
 
 /**
  * Tokenise a string into a fixed-length int32 sequence for USE-Lite.
- * USE-Lite input: int32[1 x 1 x sequenceLength] token IDs.
+ * USE-Lite input: int32[1 x sequenceLength] token IDs.
  * We use a minimal whitespace tokeniser — adequate for semantic similarity at this scale.
  */
 function tokenize(text: string, maxLen: number): Int32Array {
@@ -93,16 +130,6 @@ function tokenize(text: string, maxLen: number): Int32Array {
     ids[i] = Math.abs(hash % 9999) + 1;
   }
   return ids;
-}
-
-function cosineSimilarity(a: Float32Array, b: Float32Array): number {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
 ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
