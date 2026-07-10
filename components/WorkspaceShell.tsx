@@ -7,10 +7,16 @@ import { AIExplainer } from './AIExplainer';
 import { FileViewer } from './FileViewer';
 import { SystemControls } from './SystemControls';
 import { LiteRTStatusBadge } from './LiteRTStatusBadge';
+import { useLiteRTWorker } from './hooks/useLiteRTWorker';
 
 export function WorkspaceShell() {
   const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
   
+  // Spawn and manage the LiteRT worker for the lifetime of this shell.
+  // This is the single owner of litert.worker.ts — it bridges all
+  // BroadcastChannel traffic to/from the worker and keeps the WASM runtime alive.
+  useLiteRTWorker();
+
   // Hack for now until Workspace context hook is built
   const isConnected = true;
 
