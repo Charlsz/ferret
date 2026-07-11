@@ -1,28 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  webpack(config, { isServer }) {
-    // Allow importing .wasm files as assets
-    config.experiments = {
-      ...config.experiments,
-      asyncWebAssembly: true,
-    };
-
-    // Prevent Next.js from trying to bundle WASM files meant for the browser
-    if (isServer) {
-      config.externals = [
-        ...(config.externals || []),
-        ({ request }: { request: string }, callback: Function) => {
-          if (request?.includes('@litertjs')) {
-            return callback(null, `commonjs ${request}`);
-          }
-          callback();
-        },
-      ];
-    }
-
-    return config;
-  },
+  // Next.js 16 uses Turbopack by default.
+  // Turbopack handles asyncWebAssembly natively; no extra config needed.
+  // An explicit (even empty) turbopack key silences the webpack/turbopack mismatch error.
+  turbopack: {},
 
   // Ensure WASM MIME type is served correctly by Next.js static server
   async headers() {
