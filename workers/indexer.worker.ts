@@ -3,14 +3,22 @@
  *
  * Dedicated Web Worker for asynchronous file traversal and indexing.
  * Does not block the main UI thread during heavy text reading operations.
+ *
+ * After indexing each file, a LiteRT embedding request is dispatched via a
+ * shared BroadcastChannel so litert.worker.ts can process it independently
+ * and persist the resulting vector back to IndexedDB.
  */
 
 import { traverseDirectory } from '../lib/fs/traverse';
 import { getFile, saveFile } from '../lib/db/index';
-import type { WorkerMessage, IndexerProgressPayload } from './types';
+import { APP_CONFIG } from '../config/settings';
+import type { WorkerMessage, IndexerProgressPayload, LiteRTEmbedRequestPayload } from './types';
 
-// Web Worker global scope interface
 const ctx: Worker = self as any;
+
+// BroadcastChannel lets the indexer trigger embedding without a direct worker reference.
+// litert.worker.ts listens on the same channel name.
+const embedChannel = new BroadcastChannel('ferret-litert-embed');
 
 ctx.onmessage = async (event: MessageEvent<{ handle: FileSystemDirectoryHandle, directoryId: string }>) => {
   const { handle, directoryId } = event.data;
@@ -25,17 +33,11 @@ ctx.onmessage = async (event: MessageEvent<{ handle: FileSystemDirectoryHandle, 
     
     let processed = 0;
     
-    // We don't know total file count in advance when using async generators
-    // So we just send processed count back to the UI.
-    
     for await (const { metadata, file } of traverseDirectory(handle, directoryId)) {
-      // Incremental indexing: Check if file changed since last indexed
       const existingFile = await getFile(metadata.id);
-      
       const requiresUpdate = !existingFile || existingFile.lastModified !== metadata.lastModified;
 
       if (requiresUpdate) {
-        // Read file content as text
         const content = await file.text();
         
         await saveFile({
@@ -43,21 +45,31 @@ ctx.onmessage = async (event: MessageEvent<{ handle: FileSystemDirectoryHandle, 
           content,
           indexedAt: Date.now(),
         });
+
+        // Dispatch embedding request for this file via BroadcastChannel.
+        // We send a representative chunk: first maxChunkSizeChars characters
+        // (same safe limit used by the WebLLM worker).
+        const textChunk = content.slice(0, APP_CONFIG.ai.maxChunkSizeChars);
+        const embedPayload: LiteRTEmbedRequestPayload = {
+          fileId: metadata.id,
+          text: textChunk,
+        };
+        embedChannel.postMessage({
+          type: 'LITERT_EMBED_REQUEST',
+          payload: embedPayload,
+        } as WorkerMessage<LiteRTEmbedRequestPayload>);
       }
       
       processed++;
       
-      // Throttle postMessage if there are too many files (simple optimization)
-      // For now, post every single update or batch them. Let's post every 10 or specifically to keep UI responsive.
       if (processed % 10 === 0) {
         ctx.postMessage({
           type: 'INDEX_PROGRESS',
-          payload: { processed, total: 0, currentFile: metadata.name }, // `total` is unknown until finished
+          payload: { processed, total: 0, currentFile: metadata.name },
         } as WorkerMessage<IndexerProgressPayload>);
       }
     }
 
-    // Final update
     ctx.postMessage({
       type: 'INDEX_COMPLETE',
       payload: { processed, total: processed, currentFile: '' },

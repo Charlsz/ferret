@@ -17,12 +17,14 @@ export interface FerretDBSchema extends DBSchema {
   files: {
     key: string; // fileId (e.g., full path or hash)
     value: FileMetadata & { 
-      content?: string; // Scanned content for searches
+      content?: string;    // Scanned content for keyword search
       indexedAt: number;
+      /** LiteRT-generated float32 embedding vector for semantic search. Optional until the LiteRT worker processes the file. */
+      embedding?: number[];
     };
     indexes: {
-      'by-directory': string; // To search for files in a specific directory
-      'by-extension': string; // To filter files by extension
+      'by-directory': string;
+      'by-extension': string;
       'by-last-modified': number;
     };
   };
