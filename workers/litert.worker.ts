@@ -2,24 +2,26 @@
 /**
  * workers/litert.worker.ts
  *
- * Dedicated Web Worker for on-device inference via LiteRT.js.
- * Handles two responsibilities:
- *   1. Text embedding: produces float32 vectors for semantic search.
- *   2. File classification: categorises file content into code/prose/config/data.
+ * Dedicated Web Worker for on-device inference via LiteRT.js v2.x.
  *
- * Both tasks run on WebGPU when available, falling back to WASM/CPU automatically.
- * The worker is lazy-initialised on first request to keep startup cost near zero.
- *
- * Uses the real @litertjs/core v2.x API:
- *   - loadLiteRt(wasmPath)          — load WASM runtime
- *   - loadAndCompile(url, options)  — compile a .tflite model
- *   - model.run([TypedArray, ...])  — run inference
- *   - model.getInputDetails()       — inspect input shapes
- * WebGPU device selection is handled internally by loadAndCompile; no manual
- * setWebGpuDevice() call is needed or available in v2.x.
+ * Real @litertjs/core v2.5.2 API used here:
+ *   loadLiteRt(wasmPath)                         — boot WASM runtime
+ *   isWebGPUSupported()                          — exported helper
+ *   setWebGpuDevice(device)                      — register GPUDevice before webgpu compile
+ *   loadAndCompile(url, { accelerator })         — compile .tflite model
+ *   new Tensor(typedArray, shape)                — wrap input data
+ *   model.run(Tensor | Tensor[])                 — run inference, returns Tensor[]
+ *   tensor.data()                                — Promise<TypedArray> read-back
+ *   tensor.delete() / model.delete()             — free C++ memory
  */
 
-import { loadLiteRt, loadAndCompile } from '@litertjs/core';
+import {
+  loadLiteRt,
+  loadAndCompile,
+  isWebGPUSupported,
+  setWebGpuDevice,
+  Tensor,
+} from '@litertjs/core';
 import { getCachedModelBlobUrl } from '../lib/litert/modelLoader';
 import { APP_CONFIG } from '../config/settings';
 import type {
@@ -61,15 +63,21 @@ async function initLiteRT(): Promise<void> {
       liteRtLoaded = true;
     }
 
-    // Determine the best available accelerator.
-    // loadAndCompile handles WebGPU device setup internally in v2.x;
-    // we only need to decide which accelerator string to pass.
-    const hasWebGPU =
-      typeof navigator !== 'undefined' &&
-      'gpu' in navigator &&
-      typeof (navigator as any).gpu?.requestAdapter === 'function';
-
-    currentAccelerator = hasWebGPU ? 'webgpu' : 'wasm';
+    // Attempt WebGPU acceleration; register the device before loadAndCompile.
+    // Falls back to wasm if WebGPU is unavailable or device request fails.
+    const hasWebGPU = isWebGPUSupported();
+    if (hasWebGPU) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) {
+          const device = await adapter.requestDevice();
+          setWebGpuDevice(device);
+          currentAccelerator = 'webgpu';
+        }
+      } catch {
+        currentAccelerator = 'wasm';
+      }
+    }
 
     const accelerator = currentAccelerator;
 
@@ -82,13 +90,13 @@ async function initLiteRT(): Promise<void> {
       APP_CONFIG.litert.classifyModelCacheKey,
     );
 
-    // If WebGPU fails (unsupported op, shape mismatch, etc.) fall back to wasm.
+    // If WebGPU compile fails, retry with wasm.
     try {
       embedModel = await loadAndCompile(embedUrl, { accelerator });
       classifyModel = await loadAndCompile(classifyUrl, { accelerator });
     } catch (gpuErr) {
       if (accelerator !== 'wasm') {
-        console.warn('[LiteRT] WebGPU load failed, retrying with wasm:', gpuErr);
+        console.warn('[LiteRT] WebGPU compile failed, retrying with wasm:', gpuErr);
         currentAccelerator = 'wasm';
         embedModel = await loadAndCompile(embedUrl, { accelerator: 'wasm' });
         classifyModel = await loadAndCompile(classifyUrl, { accelerator: 'wasm' });
@@ -108,8 +116,7 @@ async function initLiteRT(): Promise<void> {
 }
 
 /**
- * Tokenise a string into a fixed-length int32 sequence.
- * Simple djb2-hash tokeniser — adequate for semantic similarity at this scale.
+ * Tokenise text into a fixed-length int32 sequence via djb2 hash.
  */
 function tokenize(text: string, maxLen: number): Int32Array {
   const tokens = text
@@ -137,7 +144,10 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
     try {
       await initLiteRT();
     } catch (err: any) {
-      ctx.postMessage({ type: 'LITERT_EMBED_ERROR', payload: `Init failed: ${err.message}` } as WorkerMessage<string>);
+      ctx.postMessage({
+        type: 'LITERT_EMBED_ERROR',
+        payload: `Init failed: ${err.message}`,
+      } as WorkerMessage<string>);
     }
     return;
   }
@@ -150,12 +160,13 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
 
       const seqLen = APP_CONFIG.litert.embeddingSequenceLength;
       const tokenIds = tokenize(text, seqLen);
+      // model.run() requires Tensor instances, not raw TypedArrays
+      const inputTensor = new Tensor(tokenIds, [1, seqLen]);
+      const results = await embedModel.run(inputTensor) as Tensor[];
+      inputTensor.delete();
 
-      // v2.x API: model.run accepts an array of TypedArrays matching input tensors
-      const results = await embedModel.run([tokenIds]);
-      const rawData: Float32Array = results[0] instanceof Float32Array
-        ? results[0]
-        : new Float32Array(results[0]);
+      const rawData = await results[0].data() as Float32Array;
+      results[0].delete();
 
       postState('READY');
       ctx.postMessage({
@@ -164,7 +175,10 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
       } as WorkerMessage<LiteRTEmbedResponsePayload>);
     } catch (err: any) {
       postState('ERROR');
-      ctx.postMessage({ type: 'LITERT_EMBED_ERROR', payload: err.message } as WorkerMessage<string>);
+      ctx.postMessage({
+        type: 'LITERT_EMBED_ERROR',
+        payload: err.message,
+      } as WorkerMessage<string>);
     }
     return;
   }
@@ -177,11 +191,12 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
 
       const seqLen = APP_CONFIG.litert.classifySequenceLength;
       const tokenIds = tokenize(text, seqLen);
+      const inputTensor = new Tensor(tokenIds, [1, seqLen]);
+      const results = await classifyModel.run(inputTensor) as Tensor[];
+      inputTensor.delete();
 
-      const results = await classifyModel.run([tokenIds]);
-      const scores: Float32Array = results[0] instanceof Float32Array
-        ? results[0]
-        : new Float32Array(results[0]);
+      const scores = await results[0].data() as Float32Array;
+      results[0].delete();
 
       const categories = APP_CONFIG.litert.classifyLabels;
       let maxIdx = 0;
@@ -200,7 +215,10 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
       } as WorkerMessage<LiteRTClassifyResponsePayload>);
     } catch (err: any) {
       postState('ERROR');
-      ctx.postMessage({ type: 'LITERT_CLASSIFY_ERROR', payload: err.message } as WorkerMessage<string>);
+      ctx.postMessage({
+        type: 'LITERT_CLASSIFY_ERROR',
+        payload: err.message,
+      } as WorkerMessage<string>);
     }
     return;
   }
