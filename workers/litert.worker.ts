@@ -1,3 +1,4 @@
+/// <reference types="@webgpu/types" />
 /**
  * workers/litert.worker.ts
  *

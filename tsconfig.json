@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "dom.webgpu", "esnext"],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "types": ["@types/wicg-file-system-access"],
     "allowJs": true,
     "skipLibCheck": true,
