@@ -9,9 +9,17 @@
  *
  * Both tasks run on WebGPU when available, falling back to WASM/CPU automatically.
  * The worker is lazy-initialised on first request to keep startup cost near zero.
+ *
+ * Uses the real @litertjs/core v2.x API:
+ *   - loadLiteRt(wasmPath)          — load WASM runtime
+ *   - loadAndCompile(url, options)  — compile a .tflite model
+ *   - model.run([TypedArray, ...])  — run inference
+ *   - model.getInputDetails()       — inspect input shapes
+ * WebGPU device selection is handled internally by loadAndCompile; no manual
+ * setWebGpuDevice() call is needed or available in v2.x.
  */
 
-import { loadLiteRt, loadAndCompile, isWebGPUSupported, setWebGpuDevice, Tensor } from '@litertjs/core';
+import { loadLiteRt, loadAndCompile } from '@litertjs/core';
 import { getCachedModelBlobUrl } from '../lib/litert/modelLoader';
 import { APP_CONFIG } from '../config/settings';
 import type {
@@ -30,8 +38,6 @@ const ctx: Worker = self as any;
 let embedModel: any = null;
 let classifyModel: any = null;
 let isInitializing = false;
-// Bug 1 fix: track whether loadLiteRt() has already been called.
-// The real API throws if called a second time, so we must guard at module level.
 let liteRtLoaded = false;
 let currentAccelerator: LiteRTAccelerator = 'wasm';
 
@@ -50,42 +56,23 @@ async function initLiteRT(): Promise<void> {
   postState('LOADING');
 
   try {
-    // Bug 1 fix: only call loadLiteRt once per worker lifetime.
     if (!liteRtLoaded) {
       await loadLiteRt(APP_CONFIG.litert.wasmPath);
       liteRtLoaded = true;
     }
 
-    // Bug 2 fix: use the official isWebGPUSupported() helper, then explicitly
-    // request a GPUDevice and register it via setWebGpuDevice() before
-    // calling loadAndCompile(). Without this the real implementation throws:
-    // "WebGPU was requested but no WebGPU device is set in the environment."
-    const hasWebGPU = isWebGPUSupported();
-    if (hasWebGPU) {
-      try {
-        const adapter = await navigator.gpu.requestAdapter();
-        if (adapter) {
-          const device = await adapter.requestDevice();
-          setWebGpuDevice(device);
-          currentAccelerator = 'webgpu';
-        } else {
-          // Adapter unavailable at runtime — fall back gracefully
-          currentAccelerator = 'wasm';
-        }
-      } catch {
-        // requestAdapter/requestDevice can throw in some environments
-        currentAccelerator = 'wasm';
-      }
-    } else {
-      currentAccelerator = 'wasm';
-    }
+    // Determine the best available accelerator.
+    // loadAndCompile handles WebGPU device setup internally in v2.x;
+    // we only need to decide which accelerator string to pass.
+    const hasWebGPU =
+      typeof navigator !== 'undefined' &&
+      'gpu' in navigator &&
+      typeof (navigator as any).gpu?.requestAdapter === 'function';
+
+    currentAccelerator = hasWebGPU ? 'webgpu' : 'wasm';
 
     const accelerator = currentAccelerator;
 
-    // Bug 3 fix: resolve cached blob URLs via the Cache API before loading.
-    // modelLoader.ts was defined but never wired in — models re-downloaded
-    // on every session without this. Now they are fetched once and served
-    // from the browser cache on subsequent runs.
     const embedUrl = await getCachedModelBlobUrl(
       APP_CONFIG.litert.embedModelUrl,
       APP_CONFIG.litert.embedModelCacheKey,
@@ -95,8 +82,20 @@ async function initLiteRT(): Promise<void> {
       APP_CONFIG.litert.classifyModelCacheKey,
     );
 
-    embedModel = await loadAndCompile(embedUrl, { accelerator });
-    classifyModel = await loadAndCompile(classifyUrl, { accelerator });
+    // If WebGPU fails (unsupported op, shape mismatch, etc.) fall back to wasm.
+    try {
+      embedModel = await loadAndCompile(embedUrl, { accelerator });
+      classifyModel = await loadAndCompile(classifyUrl, { accelerator });
+    } catch (gpuErr) {
+      if (accelerator !== 'wasm') {
+        console.warn('[LiteRT] WebGPU load failed, retrying with wasm:', gpuErr);
+        currentAccelerator = 'wasm';
+        embedModel = await loadAndCompile(embedUrl, { accelerator: 'wasm' });
+        classifyModel = await loadAndCompile(classifyUrl, { accelerator: 'wasm' });
+      } else {
+        throw gpuErr;
+      }
+    }
 
     isInitializing = false;
     postState('READY');
@@ -109,9 +108,8 @@ async function initLiteRT(): Promise<void> {
 }
 
 /**
- * Tokenise a string into a fixed-length int32 sequence for USE-Lite.
- * USE-Lite input: int32[1 x sequenceLength] token IDs.
- * We use a minimal whitespace tokeniser — adequate for semantic similarity at this scale.
+ * Tokenise a string into a fixed-length int32 sequence.
+ * Simple djb2-hash tokeniser — adequate for semantic similarity at this scale.
  */
 function tokenize(text: string, maxLen: number): Int32Array {
   const tokens = text
@@ -123,7 +121,6 @@ function tokenize(text: string, maxLen: number): Int32Array {
 
   const ids = new Int32Array(maxLen);
   for (let i = 0; i < tokens.length; i++) {
-    // Simple djb2-style hash into vocabulary range [1, 10000]
     let hash = 5381;
     for (let c = 0; c < tokens[i].length; c++) {
       hash = ((hash << 5) + hash) + tokens[i].charCodeAt(c);
@@ -153,13 +150,12 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
 
       const seqLen = APP_CONFIG.litert.embeddingSequenceLength;
       const tokenIds = tokenize(text, seqLen);
-      const inputTensor = new Tensor(tokenIds, [1, seqLen]);
 
-      const results = await embedModel.run(inputTensor);
-      inputTensor.delete();
-
-      const rawData = await results[0].data() as Float32Array;
-      results[0].delete();
+      // v2.x API: model.run accepts an array of TypedArrays matching input tensors
+      const results = await embedModel.run([tokenIds]);
+      const rawData: Float32Array = results[0] instanceof Float32Array
+        ? results[0]
+        : new Float32Array(results[0]);
 
       postState('READY');
       ctx.postMessage({
@@ -181,15 +177,12 @@ ctx.onmessage = async (event: MessageEvent<WorkerMessage<any>>) => {
 
       const seqLen = APP_CONFIG.litert.classifySequenceLength;
       const tokenIds = tokenize(text, seqLen);
-      const inputTensor = new Tensor(tokenIds, [1, seqLen]);
 
-      const results = await classifyModel.run(inputTensor);
-      inputTensor.delete();
+      const results = await classifyModel.run([tokenIds]);
+      const scores: Float32Array = results[0] instanceof Float32Array
+        ? results[0]
+        : new Float32Array(results[0]);
 
-      const scores = await results[0].data() as Float32Array;
-      results[0].delete();
-
-      // Map output index to human-readable category
       const categories = APP_CONFIG.litert.classifyLabels;
       let maxIdx = 0;
       for (let i = 1; i < scores.length; i++) {

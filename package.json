@@ -10,7 +10,7 @@
     "postinstall": "node scripts/copy-wasm.mjs"
   },
   "dependencies": {
-    "@litertjs/core": "^0.2.1",
+    "@litertjs/core": "^2.5.2",
     "@mlc-ai/web-llm": "^0.2.82",
     "@tailwindcss/typography": "^0.5.19",
     "idb": "^8.0.3",
