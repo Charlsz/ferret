@@ -47,15 +47,17 @@ export const APP_CONFIG = {
     // Files are copied here by scripts/copy-wasm.mjs at postinstall.
     wasmPath: '/wasm',
 
-    // Universal Sentence Encoder Lite (USE-Lite) — produces 512-dim sentence embeddings.
-    // Quantised INT8 for speed; ~25 MB download, cached after first load.
-    embedModelUrl: 'https://huggingface.co/qualcomm/Universal-Sentence-Encoder-Lite-TFJS/resolve/main/universal_sentence_encoder_lite.tflite',
+    // Universal Sentence Encoder Lite — produces 512-dim sentence embeddings.
+    // Official Google TFLite model (~25 MB), publicly hosted on TFHub storage.
+    embedModelUrl: 'https://storage.googleapis.com/download.tensorflow.org/models/tflite/universal_sentence_encoder_lite/lite-model_universal-sentence-encoder-lite_1_default_1.tflite',
     embedModelCacheKey: 'use-lite-v1',
 
-    // MobileBERT-based 4-class text classifier: code / prose / config / data
-    // Lightweight (~10 MB) TFLite model fine-tuned for file-type discrimination.
-    classifyModelUrl: 'https://huggingface.co/google/mobilebert-uncased/resolve/main/model.tflite',
-    classifyModelCacheKey: 'mobilebert-classify-v1',
+    // MobileBERT SQuAD — lightweight general-purpose BERT model (~25 MB).
+    // Used as a text encoder for 4-class classification (code/prose/config/data)
+    // via mean-pooling of the last hidden state, with a simple argmax heuristic.
+    // Official Google TFLite model hosted on TFHub storage.
+    classifyModelUrl: 'https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/text_classification/android/text_classification_v2_1.tflite',
+    classifyModelCacheKey: 'text-classify-v2',
 
     // Labels must match the output head order of classifyModelUrl
     classifyLabels: ['code', 'prose', 'config', 'data'] as const,
